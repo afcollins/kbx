@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"bufio"
 	"compress/gzip"
 	"encoding/json"
 	"io"
@@ -98,69 +97,32 @@ func decompressToTemp(r io.Reader) (string, error) {
 }
 
 func parseReader(r io.Reader, fileIndex int) ([]AuditEvent, error) {
-	br := bufio.NewReaderSize(r, 1024*1024)
-
-	// Peek at first non-whitespace byte to detect JSON array vs JSON-lines
-	isArray := false
-	for {
-		b, err := br.Peek(1)
-		if err != nil {
-			return nil, nil
-		}
-		if b[0] == ' ' || b[0] == '\t' || b[0] == '\n' || b[0] == '\r' {
-			br.ReadByte()
-			continue
-		}
-		isArray = b[0] == '['
-		break
-	}
-
-	if isArray {
-		return parseJSONArray(br, fileIndex)
-	}
-	return parseJSONLines(br, fileIndex)
-}
-
-// parseJSONLines parses one JSON object per line, tracking byte offsets for raw re-reading.
-func parseJSONLines(r io.Reader, fileIndex int) ([]AuditEvent, error) {
-	var events []AuditEvent
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024)
-
-	var offset int64
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		lineLen := len(line)
-		if lineLen == 0 {
-			offset += int64(lineLen) + 1
-			continue
-		}
-
-		if e, ok := parseRawEvent(line, fileIndex, offset, lineLen); ok {
-			events = append(events, e)
-		}
-
-		offset += int64(lineLen) + 1 // +1 for newline
-	}
-
-	return events, scanner.Err()
-}
-
-// parseJSONArray parses a JSON array of audit event objects using json.Decoder.
-func parseJSONArray(r io.Reader, fileIndex int) ([]AuditEvent, error) {
-	var events []AuditEvent
+	// json.Decoder handles all formats: single objects, JSON arrays, and
+	// JSON-lines (successive objects). It reads complete JSON values
+	// regardless of whitespace or pretty-printing.
 	dec := json.NewDecoder(r)
 
-	// Consume opening '['
-	if _, err := dec.Token(); err != nil {
-		return nil, err
-	}
-
-	for dec.More() {
+	var events []AuditEvent
+	for {
 		var obj json.RawMessage
 		if err := dec.Decode(&obj); err != nil {
+			break
+		}
+
+		// If this is a JSON array, unwrap and parse each element
+		if len(obj) > 0 && obj[0] == '[' {
+			var arr []json.RawMessage
+			if err := json.Unmarshal(obj, &arr); err != nil {
+				continue
+			}
+			for _, item := range arr {
+				if e, ok := parseRawEvent(item, fileIndex, 0, len(item)); ok {
+					events = append(events, e)
+				}
+			}
 			continue
 		}
+
 		if e, ok := parseRawEvent(obj, fileIndex, 0, len(obj)); ok {
 			events = append(events, e)
 		}
