@@ -22,7 +22,7 @@ func fmtVal(v float64) string {
 	return fmt.Sprintf("%.2f", v)
 }
 
-// Scatter panel configuration constants.
+// Heatmap panel configuration constants.
 const (
 	histWidth      = 22   // character width of the value histogram (including separator)
 	histShowLabels = true // show count labels on histogram bars
@@ -288,7 +288,7 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	}
 
 	if len(filtered) == 0 {
-		return panelStyle.Render(styles.TitleStyle.Render("Scatter") + "\n(no data)")
+		return panelStyle.Render(styles.TitleStyle.Render("Heatmap") + "\n(no data)")
 	}
 
 	// Find min/max timestamp and value
@@ -357,11 +357,15 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		chartCW = 15
 	}
 
-	hm := heatmap.New(chartCW, chartHeight,
+	// Canvas height is chartHeight+2 to allocate 2 rows for the X axis.
+	// This ensures ScaleFloat64PointForLine maps maxY to canvas row 0
+	// (not -1). We strip the bottom 2 X-axis rows from the view output.
+	canvasH := chartHeight + 2
+	hm := heatmap.New(chartCW, canvasH,
 		heatmap.WithColorScale(heatColorScale),
 		heatmap.WithValueRange(0, 1),
-		heatmap.WithStyle(linechart.New(chartCW, chartHeight, minX, maxX, minV, maxV,
-			linechart.WithXYSteps(0, 2),
+		heatmap.WithStyle(linechart.New(chartCW, canvasH, minX, maxX, minV, maxV,
+			linechart.WithXYSteps(chartCW, 2),
 			linechart.WithYLabelFormatter(yLabelFmt),
 			linechart.WithStyles(
 				lipgloss.NewStyle().Foreground(styles.ColorMuted),
@@ -454,15 +458,19 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	// Build value histogram
 	histLines := sp.buildHistogram(filtered, ms, chartHeight, minV, maxV)
 
-	// Join chart lines with histogram lines
+	// Join chart lines with histogram lines, stripping the bottom 2 X-axis rows
 	chartLines := strings.Split(chartStr, "\n")
+	graphLines := chartLines
+	if len(graphLines) > 2 {
+		graphLines = graphLines[:len(graphLines)-2]
+	}
 	var joinedChart strings.Builder
-	for i, line := range chartLines {
+	for i, line := range graphLines {
 		joinedChart.WriteString(line)
 		if i < len(histLines) {
 			joinedChart.WriteString(histLines[i])
 		}
-		if i < len(chartLines)-1 {
+		if i < len(graphLines)-1 {
 			joinedChart.WriteString("\n")
 		}
 	}
@@ -522,7 +530,7 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 
 	// Title with context
 	var b strings.Builder
-	titleParts := fmt.Sprintf("Scatter (%s - %s, %d pts)", fmtVal(minV), fmtVal(maxV), len(filtered))
+	titleParts := fmt.Sprintf("Heatmap (%s - %s, %d pts)", fmtVal(minV), fmtVal(maxV), len(filtered))
 	if sp.Focused {
 		titleParts += fmt.Sprintf("  Y: %s", fmtVal(sp.CursorValue()))
 	}
