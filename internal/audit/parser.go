@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os"
 	"time"
 )
@@ -34,7 +35,9 @@ type ParseResult struct {
 }
 
 // ParseFile parses a .log or .log.gz file into AuditEvents, tracking byte offsets.
-// For .gz files, it decompresses to a temp file and returns that path in ReadPath.
+// For .gz files, it streams through a TeeReader: decompressing, writing to a temp
+// file, and parsing in a single pass. The temp file path is returned in ReadPath
+// for offset-based raw JSON re-reads.
 func ParseFile(path string, fileIndex int) (*ParseResult, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -44,29 +47,39 @@ func ParseFile(path string, fileIndex int) (*ParseResult, error) {
 
 	var reader io.Reader
 	readPath := path
+	var tmpCleanup func()
 
 	if isGzip(path) {
-		tmpFile, err := decompressToTemp(f)
+		gz, err := gzip.NewReader(f)
 		if err != nil {
 			return nil, err
 		}
-		readPath = tmpFile
-		// Re-open the decompressed temp file for parsing
-		tf, err := os.Open(tmpFile)
+		defer gz.Close()
+
+		tmp, err := os.CreateTemp("", "kbx-audit-*.log")
 		if err != nil {
 			return nil, err
 		}
-		defer tf.Close()
-		reader = tf
+		tmpCleanup = func() { tmp.Close() }
+		readPath = tmp.Name()
+
+		// TeeReader: reads from gzip, writes to temp file simultaneously
+		reader = io.TeeReader(gz, tmp)
+		slog.Info("streaming gzip", "file", path, "temp", readPath)
 	} else {
 		reader = f
 	}
 
+	start := time.Now()
 	events, err := parseReader(reader, fileIndex)
+	if tmpCleanup != nil {
+		tmpCleanup()
+	}
 	if err != nil {
 		return nil, err
 	}
 
+	slog.Info("parsed file", "file", path, "events", len(events), "elapsed", time.Since(start).Round(time.Millisecond))
 	return &ParseResult{Events: events, ReadPath: readPath}, nil
 }
 
@@ -75,41 +88,23 @@ func isGzip(path string) bool {
 	return n > 3 && path[n-3:] == ".gz"
 }
 
-func decompressToTemp(r io.Reader) (string, error) {
-	gz, err := gzip.NewReader(r)
-	if err != nil {
-		return "", err
-	}
-	defer gz.Close()
-
-	tmp, err := os.CreateTemp("", "kube-audit-*.log")
-	if err != nil {
-		return "", err
-	}
-	defer tmp.Close()
-
-	if _, err := io.Copy(tmp, gz); err != nil {
-		os.Remove(tmp.Name())
-		return "", err
-	}
-
-	return tmp.Name(), nil
-}
-
 func parseReader(r io.Reader, fileIndex int) ([]AuditEvent, error) {
 	// json.Decoder handles all formats: single objects, JSON arrays, and
-	// JSON-lines (successive objects). It reads complete JSON values
-	// regardless of whitespace or pretty-printing.
+	// JSON-lines (successive objects). InputOffset tracks byte positions
+	// for offset-based raw JSON re-reads from disk.
 	dec := json.NewDecoder(r)
 
 	var events []AuditEvent
 	for {
+		startOffset := dec.InputOffset()
 		var obj json.RawMessage
 		if err := dec.Decode(&obj); err != nil {
 			break
 		}
+		endOffset := dec.InputOffset()
 
-		// If this is a JSON array, unwrap and parse each element
+		// If this is a JSON array, unwrap and parse each element.
+		// Offset tracking is not available for individual array elements.
 		if len(obj) > 0 && obj[0] == '[' {
 			var arr []json.RawMessage
 			if err := json.Unmarshal(obj, &arr); err != nil {
@@ -123,7 +118,8 @@ func parseReader(r io.Reader, fileIndex int) ([]AuditEvent, error) {
 			continue
 		}
 
-		if e, ok := parseRawEvent(obj, fileIndex, 0, len(obj)); ok {
+		lineLen := int(endOffset - startOffset)
+		if e, ok := parseRawEvent(obj, fileIndex, startOffset, lineLen); ok {
 			events = append(events, e)
 		}
 	}
@@ -161,7 +157,7 @@ func parseRawEvent(data []byte, fileIndex int, offset int64, lineLen int) (Audit
 	}, true
 }
 
-// ReadRawJSON reads the raw JSON line for an event from the given file path.
+// ReadRawJSON reads the raw JSON for an event from the given file path.
 func ReadRawJSON(path string, offset int64, length int) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {

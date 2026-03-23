@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"os"
 	"strconv"
@@ -214,6 +215,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) loadFiles() tea.Cmd {
 	files := m.files
 	return func() tea.Msg {
+		slog.Info("loading audit files", "count", len(files))
 		start := time.Now()
 		results := make([]*audit.ParseResult, 0, len(files))
 		var temps []string
@@ -221,6 +223,7 @@ func (m Model) loadFiles() tea.Cmd {
 		for i, path := range files {
 			result, err := audit.ParseFile(path, i)
 			if err != nil {
+				slog.Error("failed to parse file", "file", path, "error", err)
 				continue
 			}
 			if result.ReadPath != path {
@@ -229,10 +232,17 @@ func (m Model) loadFiles() tea.Cmd {
 			results = append(results, result)
 		}
 
+		elapsed := time.Since(start)
+		total := 0
+		for _, r := range results {
+			total += len(r.Events)
+		}
+		slog.Info("all files parsed", "events", total, "elapsed", elapsed.Round(time.Millisecond))
+
 		return filesParsedMsg{
 			results: results,
 			temps:   temps,
-			elapsed: time.Since(start),
+			elapsed: elapsed,
 		}
 	}
 }
@@ -240,6 +250,7 @@ func (m Model) loadFiles() tea.Cmd {
 func (m Model) loadMetrics() tea.Cmd {
 	files := m.files
 	return func() tea.Msg {
+		slog.Info("loading metrics files", "count", len(files))
 		start := time.Now()
 		results := make([]*metrics.ParseResult, 0, len(files))
 		var temps []string
@@ -247,6 +258,7 @@ func (m Model) loadMetrics() tea.Cmd {
 		for i, path := range files {
 			result, err := metrics.ParseFile(path, i)
 			if err != nil {
+				slog.Error("failed to parse metrics", "file", path, "error", err)
 				continue
 			}
 			if result.TempPath != "" {
@@ -255,10 +267,13 @@ func (m Model) loadMetrics() tea.Cmd {
 			results = append(results, result)
 		}
 
+		elapsed := time.Since(start)
+		slog.Info("all metrics parsed", "elapsed", elapsed.Round(time.Millisecond))
+
 		return metricsParsedMsg{
 			results: results,
 			temps:   temps,
-			elapsed: time.Since(start),
+			elapsed: elapsed,
 		}
 	}
 }
@@ -272,9 +287,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case filesParsedMsg:
+		loadStart := time.Now()
 		m.store.Load(msg.results)
 		m.tempFiles = msg.temps
 		total := m.store.TotalCount()
+		slog.Info("store loaded", "events", total, "storeLoad", time.Since(loadStart).Round(time.Millisecond), "totalElapsed", msg.elapsed.Round(time.Millisecond))
 		m.statusMsg = fmt.Sprintf("Loaded %d events in %s", total, msg.elapsed.Round(time.Millisecond))
 		m.state = stateDashboard
 		m.focus = 0

@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -67,9 +68,12 @@ func (s *EventStore) Load(results []*audit.ParseResult) {
 	}
 
 	// k-way merge sort by timestamp
+	start := time.Now()
 	s.Events = mergeSort(results)
+	slog.Info("merge sort complete", "events", len(s.Events), "elapsed", time.Since(start).Round(time.Millisecond))
 
 	// Build indexes
+	start = time.Now()
 	for i := range s.Events {
 		e := &s.Events[i]
 		s.verbIdx.Add(e.Verb, i)
@@ -80,6 +84,7 @@ func (s *EventStore) Load(results []*audit.ParseResult) {
 		s.userAgentIdx.Add(e.UserAgent, i)
 		s.statusIdx.Add(e.StatusCode, i)
 	}
+	slog.Info("indexes built", "events", len(s.Events), "elapsed", time.Since(start).Round(time.Millisecond))
 
 	// Initial filtered = all
 	s.filtered = make([]int, len(s.Events))

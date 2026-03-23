@@ -357,15 +357,16 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 		chartCW = 15
 	}
 
-	// Canvas height is chartHeight+2 to allocate 2 rows for the X axis.
-	// This ensures ScaleFloat64PointForLine maps maxY to canvas row 0
-	// (not -1). We strip the bottom 2 X-axis rows from the view output.
-	canvasH := chartHeight + 2
-	hm := heatmap.New(chartCW, canvasH,
+	// Extend maxV slightly so ScaleFloat64PointForLine maps the actual
+	// max data value to canvas row 0 instead of -1 (out of bounds).
+	// Without this, DrawPoint skips points at exactly maxY.
+	hmMaxV := minV + (maxV-minV)*float64(chartHeight)/(float64(chartHeight)-0.5)
+
+	hm := heatmap.New(chartCW, chartHeight,
 		heatmap.WithColorScale(heatColorScale),
 		heatmap.WithValueRange(0, 1),
-		heatmap.WithStyle(linechart.New(chartCW, canvasH, minX, maxX, minV, maxV,
-			linechart.WithXYSteps(chartCW, 2),
+		heatmap.WithStyle(linechart.New(chartCW, chartHeight, minX, maxX, minV, hmMaxV,
+			linechart.WithXYSteps(0, 2),
 			linechart.WithYLabelFormatter(yLabelFmt),
 			linechart.WithStyles(
 				lipgloss.NewStyle().Foreground(styles.ColorMuted),
@@ -458,19 +459,15 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	// Build value histogram
 	histLines := sp.buildHistogram(filtered, ms, chartHeight, minV, maxV)
 
-	// Join chart lines with histogram lines, stripping the bottom 2 X-axis rows
+	// Join chart lines with histogram lines
 	chartLines := strings.Split(chartStr, "\n")
-	graphLines := chartLines
-	if len(graphLines) > 2 {
-		graphLines = graphLines[:len(graphLines)-2]
-	}
 	var joinedChart strings.Builder
-	for i, line := range graphLines {
+	for i, line := range chartLines {
 		joinedChart.WriteString(line)
 		if i < len(histLines) {
 			joinedChart.WriteString(histLines[i])
 		}
-		if i < len(graphLines)-1 {
+		if i < len(chartLines)-1 {
 			joinedChart.WriteString("\n")
 		}
 	}
