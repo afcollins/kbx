@@ -13,16 +13,29 @@ import (
 
 type FilePickerPanel struct {
 	Dir      string
-	Files    []string
+	Files    []string // all matching files
 	Cursor   int
 	Scroll   int
 	Selected map[string]bool
 	Width    int
 	Height   int
+
+	// Search/filter
+	Searching bool
+	SearchBuf string
+	filtered  []int // indices into Files matching search
 }
 
 func NewFilePickerPanel() *FilePickerPanel {
-	dir, _ := os.Getwd()
+	return NewFilePickerPanelDir("")
+}
+
+// NewFilePickerPanelDir creates a file picker for the given directory.
+// If dir is empty, the current working directory is used.
+func NewFilePickerPanelDir(dir string) *FilePickerPanel {
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
 	fp := &FilePickerPanel{
 		Dir:      dir,
 		Selected: make(map[string]bool),
@@ -45,12 +58,43 @@ func (fp *FilePickerPanel) Refresh() {
 			continue
 		}
 		name := e.Name()
-		if strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".log.gz") ||
-			strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".json.gz") {
+		if isPickerFile(name) {
 			fp.Files = append(fp.Files, name)
 		}
 	}
 	sort.Strings(fp.Files)
+	fp.rebuildFiltered()
+}
+
+func isPickerFile(name string) bool {
+	return strings.HasSuffix(name, ".log") || strings.HasSuffix(name, ".log.gz") ||
+		strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".json.gz")
+}
+
+func (fp *FilePickerPanel) rebuildFiltered() {
+	fp.filtered = nil
+	query := strings.ToLower(fp.SearchBuf)
+	for i, name := range fp.Files {
+		if query == "" || strings.Contains(strings.ToLower(name), query) {
+			fp.filtered = append(fp.filtered, i)
+		}
+	}
+	if fp.Cursor >= len(fp.filtered) {
+		fp.Cursor = len(fp.filtered) - 1
+	}
+	if fp.Cursor < 0 {
+		fp.Cursor = 0
+	}
+	fp.Scroll = 0
+}
+
+func (fp *FilePickerPanel) visibleRows() int {
+	// Height minus: title, dir, help, search bar, top/bottom padding, borders
+	v := fp.Height - 8
+	if v < 1 {
+		v = 1
+	}
+	return v
 }
 
 func (fp *FilePickerPanel) MoveUp() {
@@ -63,9 +107,9 @@ func (fp *FilePickerPanel) MoveUp() {
 }
 
 func (fp *FilePickerPanel) MoveDown() {
-	if fp.Cursor < len(fp.Files)-1 {
+	if fp.Cursor < len(fp.filtered)-1 {
 		fp.Cursor++
-		vis := fp.Height - 6
+		vis := fp.visibleRows()
 		if fp.Cursor >= fp.Scroll+vis {
 			fp.Scroll = fp.Cursor - vis + 1
 		}
@@ -73,8 +117,8 @@ func (fp *FilePickerPanel) MoveDown() {
 }
 
 func (fp *FilePickerPanel) ToggleSelection() {
-	if fp.Cursor < len(fp.Files) {
-		name := fp.Files[fp.Cursor]
+	if fp.Cursor < len(fp.filtered) {
+		name := fp.Files[fp.filtered[fp.Cursor]]
 		if fp.Selected[name] {
 			delete(fp.Selected, name)
 		} else {
@@ -92,6 +136,33 @@ func (fp *FilePickerPanel) SelectedPaths() []string {
 	return paths
 }
 
+// HandleSearchKey processes a key during search mode.
+// Returns true if the key was consumed.
+func (fp *FilePickerPanel) HandleSearchKey(key string) bool {
+	switch key {
+	case "enter", "esc":
+		fp.Searching = false
+		if key == "esc" {
+			fp.SearchBuf = ""
+			fp.rebuildFiltered()
+		}
+		return true
+	case "backspace":
+		if len(fp.SearchBuf) > 0 {
+			fp.SearchBuf = fp.SearchBuf[:len(fp.SearchBuf)-1]
+			fp.rebuildFiltered()
+		}
+		return true
+	default:
+		if len(key) == 1 && key[0] >= 32 && key[0] < 127 {
+			fp.SearchBuf += key
+			fp.rebuildFiltered()
+			return true
+		}
+	}
+	return false
+}
+
 func (fp *FilePickerPanel) View() string {
 	var b strings.Builder
 
@@ -100,24 +171,33 @@ func (fp *FilePickerPanel) View() string {
 	b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
 		fmt.Sprintf("Dir: %s", fp.Dir)))
 	b.WriteString("\n")
-	b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
-		"[Space] toggle  [Enter] load selected  [q] quit"))
-	b.WriteString("\n\n")
 
-	vis := fp.Height - 6
-	if vis < 1 {
-		vis = 1
+	helpParts := "[↑↓] navigate  [Space] toggle  [Enter] load  [/] filter  [q] quit"
+	b.WriteString(styles.HelpStyle.Render(helpParts))
+	b.WriteString("\n")
+
+	// Search bar
+	if fp.Searching {
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorAccent).Render(
+			fmt.Sprintf("/%s█", fp.SearchBuf)))
+	} else if fp.SearchBuf != "" {
+		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorMuted).Render(
+			fmt.Sprintf("filter: %s", fp.SearchBuf)))
 	}
+	b.WriteString("\n")
+
+	vis := fp.visibleRows()
 	end := fp.Scroll + vis
-	if end > len(fp.Files) {
-		end = len(fp.Files)
+	if end > len(fp.filtered) {
+		end = len(fp.filtered)
 	}
 
 	for i := fp.Scroll; i < end; i++ {
-		name := fp.Files[i]
+		fileIdx := fp.filtered[i]
+		name := fp.Files[fileIdx]
 		prefix := "  "
 		if fp.Selected[name] {
-			prefix = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("* ")
+			prefix = lipgloss.NewStyle().Foreground(styles.ColorSuccess).Render("✓ ")
 		}
 
 		line := prefix + name
@@ -131,9 +211,14 @@ func (fp *FilePickerPanel) View() string {
 		}
 	}
 
-	if len(fp.Files) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(
-			"No .log, .log.gz, .json, or .json.gz files found in current directory"))
+	if len(fp.filtered) == 0 {
+		if fp.SearchBuf != "" {
+			b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(
+				fmt.Sprintf("No files matching '%s'", fp.SearchBuf)))
+		} else {
+			b.WriteString(lipgloss.NewStyle().Foreground(styles.ColorDanger).Render(
+				"No .log, .log.gz, .json, or .json.gz files found"))
+		}
 	}
 
 	sel := len(fp.Selected)
@@ -141,5 +226,6 @@ func (fp *FilePickerPanel) View() string {
 		b.WriteString(fmt.Sprintf("\n\n%d file(s) selected", sel))
 	}
 
-	return lipgloss.NewStyle().Padding(2, 4).Render(b.String())
+	panelStyle := styles.FocusedPanelStyle.Width(fp.Width - 2).Height(fp.Height - 2)
+	return panelStyle.Render(b.String())
 }

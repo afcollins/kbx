@@ -127,6 +127,15 @@ func NewModel(files []string) Model {
 		scatter:     panel.NewScatterPanel(),
 	}
 
+	// If a single directory is passed, open the file picker in that directory
+	if len(files) == 1 {
+		if info, err := os.Stat(files[0]); err == nil && info.IsDir() {
+			m.state = stateFilePicker
+			m.filePicker = panel.NewFilePickerPanelDir(files[0])
+			return m
+		}
+	}
+
 	if len(files) == 0 {
 		m.state = stateFilePicker
 		m.filePicker = panel.NewFilePickerPanel()
@@ -1197,7 +1206,23 @@ func (m Model) handleDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleFilePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	key := msg.String()
+
+	// Search mode intercepts most keys
+	if m.filePicker.Searching {
+		if !m.filePicker.HandleSearchKey(key) {
+			// Key not consumed by search — handle navigation
+			switch key {
+			case "up", "k":
+				m.filePicker.MoveUp()
+			case "down", "j":
+				m.filePicker.MoveDown()
+			}
+		}
+		return m, nil
+	}
+
+	switch key {
 	case "q", "ctrl+c":
 		return m, tea.Quit
 	case "up", "k":
@@ -1206,6 +1231,8 @@ func (m Model) handleFilePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.filePicker.MoveDown()
 	case " ":
 		m.filePicker.ToggleSelection()
+	case "/":
+		m.filePicker.Searching = true
 	case "enter":
 		paths := m.filePicker.SelectedPaths()
 		if len(paths) > 0 {
@@ -1241,6 +1268,10 @@ func (m *Model) refreshPanels() {
 }
 
 func (m *Model) updateSizes() {
+	if m.filePicker != nil {
+		m.filePicker.Width = m.width
+		m.filePicker.Height = m.height
+	}
 	if m.metricsMode {
 		m.updateMetricsSizes()
 	} else {
