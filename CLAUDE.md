@@ -6,7 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 go build -o kbx .
-go run . [file1.log file2.log.gz ...]   # launches TUI; no args shows file picker
+go run . [file1.log file2.log.gz ...]   # launches TUI with files
+go run .                                # no args shows file picker (cwd)
+go run . /path/to/dir                   # directory arg opens picker in that dir
 ```
 
 ## Testing
@@ -25,13 +27,17 @@ Interactive TUI for exploring Kubernetes API server audit logs and metrics. Buil
 
 ### Data Flow
 
-1. **Parse**: `internal/audit` parses JSON-lines (.log/.log.gz) and JSON arrays (.json/.json.gz); `internal/metrics` parses JSON arrays (.json/.json.gz). Mode auto-detected: .json/.json.gz files are inspected for `audit.k8s.io` apiVersion to distinguish audit exports from metrics.
+1. **Parse**: `internal/audit` parses JSON-lines (.log/.log.gz) and JSON arrays (.json/.json.gz); `internal/metrics` parses JSON arrays (.json/.json.gz). Mode auto-detected: .json/.json.gz files are inspected for `audit.k8s.io` apiVersion to distinguish audit exports from metrics. Gzip files are streamed via `io.TeeReader` (decompress + write temp + parse in a single pass). `json.Decoder.InputOffset()` tracks byte positions for offset-based raw JSON re-reads.
 2. **Store**: `internal/store.EventStore` for audit events; `internal/mstore.MetricStore` for metrics. Both use inverted indexes, filtered slices, and `refilter()` on change. MetricStore supports time, value, and facet filters.
 3. **Render** (`internal/tui` + `internal/tui/panel`): Root `Model` in `tui/app.go` orchestrates state. Panel types: Facet, Timeline, ScatterPanel, EventList, MetricList, EventDetail, FilterBar, FilePicker.
 
+### Logging
+
+Performance logging via `log/slog` to `~/.kbx/kbx.log` (truncated each run). Watch live: `tail -f ~/.kbx/kbx.log`. Logs file parsing, gzip streaming, merge sort, index building, and store load timings.
+
 ### Key Design Decisions
 
-- **No raw JSON in memory** (audit): Re-read from disk via file offset/length for JSON-lines; offset tracking unavailable for JSON array imports. Metrics store raw JSON (small files).
+- **No raw JSON in memory** (audit): Re-read from disk via file offset/length using `json.Decoder.InputOffset()`; offset tracking unavailable for JSON array imports. Metrics store raw JSON (small files).
 - **Styles in `tui/styles`**: Breaks import cycle between `tui` and `tui/panel`.
 - **Focus model**: Integer-based focus index. Audit: 0-5 facets, 6 timeline, 7 event list. Metrics: 0..N facets, N scatter, N+1 metric list.
 - **Facet panels are generic**: `FacetPanel` takes a field name; both stores implement `FacetSource`.
@@ -41,6 +47,7 @@ Interactive TUI for exploring Kubernetes API server audit logs and metrics. Buil
 - **Proportional panel sizing**: Panel heights are computed as percentages of window height (ratios in `styles/styles.go`: FacetHeightRatio=25, TimelineHeightRatio=40, ListHeightRatio=35) instead of fixed pixel sizes.
 - **Quit confirmation**: First 'q' press shows confirmation prompt in status bar; second 'q' or 'y' quits, any other key cancels. Ctrl+c always quits immediately.
 - **Ctrl+z suspend**: Uses bubbletea's `tea.Suspend` to background the process (restores terminal, sends SIGTSTP, redraws on resume).
+- **File picker**: Full-screen bordered panel. Shown when no files are passed or when a directory argument is given. Lists .log/.log.gz/.json/.json.gz files. '/' activates substring filter (same UX as facet search). Space toggles selection, Enter loads. Resizes with terminal window.
 
 ### Audit-Specific Panels
 
