@@ -118,3 +118,32 @@ func TestParseJobSummary(t *testing.T) {
 		t.Errorf("expected 0 events for jobSummary-only file, got %d", len(result.Events))
 	}
 }
+
+func TestParseContainerMemoryMixedMetadata(t *testing.T) {
+	result, err := ParseFile("testdata/containerMemory-mixed-metadata.json", 0)
+	if err != nil {
+		t.Fatalf("ParseFile: %v", err)
+	}
+
+	if len(result.Events) != 3 {
+		t.Fatalf("expected 3 events, got %d (skipped items indicate metadata parse failure)", len(result.Events))
+	}
+
+	e := result.Events[0]
+	if e.MetricName != "containerMemory" {
+		t.Errorf("MetricName = %q, want containerMemory", e.MetricName)
+	}
+	if e.Timestamp.IsZero() {
+		t.Error("Timestamp is zero")
+	}
+	if e.Labels["container"] == "" || e.Labels["namespace"] == "" {
+		t.Error("labels missing container or namespace")
+	}
+	// Numeric metadata values (e.g. totalNodes, infraNodesCount) must be coerced to strings.
+	if e.Metadata["totalNodes"] == "" {
+		t.Error("numeric metadata field totalNodes not parsed")
+	}
+	if e.Metadata["clusterName"] == "" {
+		t.Error("string metadata field clusterName not parsed")
+	}
+}

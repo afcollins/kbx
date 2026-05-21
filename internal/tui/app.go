@@ -270,6 +270,7 @@ func (m Model) loadMetrics() tea.Cmd {
 				slog.Error("failed to parse metrics", "file", path, "error", err)
 				continue
 			}
+			slog.Info("metrics file parsed", "file", path, "events", len(result.Events))
 			if result.TempPath != "" {
 				temps = append(temps, result.TempPath)
 			}
@@ -277,7 +278,11 @@ func (m Model) loadMetrics() tea.Cmd {
 		}
 
 		elapsed := time.Since(start)
-		slog.Info("all metrics parsed", "elapsed", elapsed.Round(time.Millisecond))
+		total := 0
+		for _, r := range results {
+			total += len(r.Events)
+		}
+		slog.Info("all metrics parsed", "events", total, "files", len(results), "elapsed", elapsed.Round(time.Millisecond))
 
 		return metricsParsedMsg{
 			results: results,
@@ -309,10 +314,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case metricsParsedMsg:
+		loadStart := time.Now()
 		m.metricStore = mstore.New()
 		m.metricStore.Load(msg.results)
 		m.tempFiles = msg.temps
 		total := m.metricStore.TotalCount()
+		slog.Info("metric store loaded", "events", total, "fields", m.metricStore.FieldNames, "storeLoad", time.Since(loadStart).Round(time.Millisecond), "totalElapsed", msg.elapsed.Round(time.Millisecond))
 		m.statusMsg = fmt.Sprintf("Loaded %d metrics in %s", total, msg.elapsed.Round(time.Millisecond))
 		m.state = stateDashboard
 		m.buildMetricFacets()
@@ -341,6 +348,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) buildMetricFacets() {
 	visible := m.metricStore.VisibleFields()
+	slog.Info("metric visible fields", "fields", visible)
 
 	var primary, secondary []string
 	for _, f := range visible {
@@ -361,6 +369,7 @@ func (m *Model) buildMetricFacets() {
 		m.metricFacets = append(m.metricFacets, panel.NewFacetPanel(f, f))
 	}
 	m.mTotal = len(m.metricFacets)
+	slog.Info("metric facets built", "primary", m.mPrimary, "secondary", m.mTotal-m.mPrimary, "total", m.mTotal)
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {

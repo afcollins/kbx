@@ -4,7 +4,9 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,12 +29,13 @@ type rawMetric struct {
 	Labels     map[string]string `json:"labels"`
 	Value      *float64          `json:"value"`
 	Query      string            `json:"query"`
-	Metadata   map[string]string `json:"metadata"`
+	// Metadata is json.RawMessage to tolerate mixed-type values (strings, numbers, arrays).
+	Metadata json.RawMessage `json:"metadata"`
 
 	// podLatency flat fields
-	Namespace  string `json:"namespace"`
-	PodName    string `json:"podName"`
-	NodeName   string `json:"nodeName"`
+	Namespace string `json:"namespace"`
+	PodName   string `json:"podName"`
+	NodeName  string `json:"nodeName"`
 
 	// podLatency value fields
 	SchedulingLatency      *float64 `json:"schedulingLatency"`
@@ -111,16 +114,25 @@ func parseReader(r io.Reader, fileIndex int) (*ParseResult, error) {
 
 	var rawItems []json.RawMessage
 	if err := json.Unmarshal(data, &rawItems); err != nil {
+		slog.Error("metrics JSON unmarshal failed", "fileIndex", fileIndex, "dataLen", len(data), "error", err)
 		return nil, err
 	}
+
+	slog.Info("metrics array parsed", "fileIndex", fileIndex, "arrayLen", len(rawItems))
 
 	result := &ParseResult{
 		RawItems: rawItems,
 	}
 
+	skipped := 0
+	zeroTS := 0
 	for arrayIdx, raw := range rawItems {
 		var m rawMetric
 		if err := json.Unmarshal(raw, &m); err != nil {
+			skipped++
+			if skipped <= 3 {
+				slog.Warn("skipping unparseable metric item", "arrayIdx", arrayIdx, "error", err)
+			}
 			continue
 		}
 
@@ -138,6 +150,12 @@ func parseReader(r io.Reader, fileIndex int) (*ParseResult, error) {
 		}
 		if ts.IsZero() {
 			ts, _ = time.Parse("2006-01-02T15:04:05Z", m.Timestamp)
+		}
+		if ts.IsZero() {
+			zeroTS++
+			if zeroTS <= 3 {
+				slog.Warn("zero timestamp", "arrayIdx", arrayIdx, "raw", string(raw)[:min(len(raw), 120)])
+			}
 		}
 
 		if m.MetricName == "podLatencyMeasurement" {
@@ -164,13 +182,71 @@ func parseReader(r io.Reader, fileIndex int) (*ParseResult, error) {
 			JobName:    m.JobName,
 			Labels:     labels,
 			Value:      val,
-			Metadata:   m.Metadata,
+			Metadata:   parseMetadata(m.Metadata),
 			FileIndex:  fileIndex,
 			ArrayIndex: arrayIdx,
 		})
 	}
 
+	slog.Info("metrics events produced", "fileIndex", fileIndex, "events", len(result.Events), "skipped", skipped, "zeroTS", zeroTS)
 	return result, nil
+}
+
+// parseMetadata converts a JSON metadata value to map[string]string.
+// Handles object with any value types (numbers become their string representation),
+// arrays of objects with "key"/"value" pairs, and missing/null metadata.
+func parseMetadata(raw json.RawMessage) map[string]string {
+	if len(raw) == 0 {
+		return nil
+	}
+	// Try object form first: {"key": "val", "key2": 123}
+	var anyMap map[string]any
+	if err := json.Unmarshal(raw, &anyMap); err == nil {
+		out := make(map[string]string, len(anyMap))
+		for k, v := range anyMap {
+			switch tv := v.(type) {
+			case string:
+				out[k] = tv
+			case float64:
+				out[k] = strconv.FormatFloat(tv, 'f', -1, 64)
+			case bool:
+				out[k] = strconv.FormatBool(tv)
+			default:
+				b, _ := json.Marshal(v)
+				out[k] = string(b)
+			}
+		}
+		return out
+	}
+	// Try array of {key, value} pairs
+	var arr []map[string]any
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		out := make(map[string]string, len(arr))
+		for _, item := range arr {
+			k, _ := item["key"].(string)
+			if k == "" {
+				continue
+			}
+			switch tv := item["value"].(type) {
+			case string:
+				out[k] = tv
+			case float64:
+				out[k] = strconv.FormatFloat(tv, 'f', -1, 64)
+			default:
+				b, _ := json.Marshal(item["value"])
+				out[k] = string(b)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 var podLatencyFields = []struct {
@@ -195,6 +271,7 @@ func explodePodLatency(m rawMetric, ts time.Time, fileIndex, arrayIdx int) []Met
 		labels["node"] = m.NodeName
 	}
 
+	meta := parseMetadata(m.Metadata)
 	var events []MetricEvent
 	for _, field := range podLatencyFields {
 		val := field.Get(&m)
@@ -213,7 +290,7 @@ func explodePodLatency(m rawMetric, ts time.Time, fileIndex, arrayIdx int) []Met
 			JobName:    m.JobName,
 			Labels:     l,
 			Value:      *val,
-			Metadata:   m.Metadata,
+			Metadata:   meta,
 			FileIndex:  fileIndex,
 			ArrayIndex: arrayIdx,
 		})
