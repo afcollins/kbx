@@ -6,7 +6,7 @@ import "time"
 // For podLatencyMeasurement files, each latency field is exploded into a separate event.
 type MetricEvent struct {
 	Timestamp  time.Time
-	MetricName string            // "containerCPU", "schedulingLatency", etc.
+	MetricName string // "containerCPU", "schedulingLatency", etc.
 	UUID       string
 	JobName    string
 	Labels     map[string]string // merged from labels{} object + flat fields

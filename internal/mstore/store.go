@@ -242,9 +242,9 @@ func (s *MetricStore) matchesFilters(i int) bool {
 	return true
 }
 
-func (s *MetricStore) Filtered() []int     { return s.filtered }
-func (s *MetricStore) FilteredCount() int  { return len(s.filtered) }
-func (s *MetricStore) TotalCount() int     { return len(s.Events) }
+func (s *MetricStore) Filtered() []int    { return s.filtered }
+func (s *MetricStore) FilteredCount() int { return len(s.filtered) }
+func (s *MetricStore) TotalCount() int    { return len(s.Events) }
 
 // Timeline returns histogram buckets for the filtered events.
 func (s *MetricStore) Timeline(buckets int) []store.TimelineBucket {

@@ -14,10 +14,10 @@ import (
 // ParseResult holds events from a single metrics file.
 type ParseResult struct {
 	Events     []MetricEvent
-	RawItems   []json.RawMessage  // raw JSON per original array item
+	RawItems   []json.RawMessage // raw JSON per original array item
 	ReadPath   string
-	TempPath   string             // non-empty if a temp file was created (for cleanup)
-	JobSummary map[string]any     // populated from jobSummary entries, nil otherwise
+	TempPath   string         // non-empty if a temp file was created (for cleanup)
+	JobSummary map[string]any // populated from jobSummary entries, nil otherwise
 }
 
 // rawMetric captures all known fields from both standard and podLatency formats.

@@ -17,10 +17,10 @@ type TimelineSource interface {
 }
 
 type TimelinePanel struct {
-	Width      int
-	Height     int
-	Focused    bool
-	Cursor     int
+	Width          int
+	Height         int
+	Focused        bool
+	Cursor         int
 	SelectionStart int // -1 means no selection started
 	SelectionEnd   int // -1 means no selection ended
 	buckets        []store.TimelineBucket

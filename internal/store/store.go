@@ -206,10 +206,7 @@ func (s *EventStore) refilter() {
 		return
 	}
 
-	var candidates []int
-
-	// Start with the most selective index if a filter is set
-	candidates = s.allIndices()
+	var candidates = s.allIndices()
 
 	result := make([]int, 0, len(candidates))
 	for _, i := range candidates {

@@ -35,7 +35,7 @@ const (
 const (
 	focusVerb      = 0
 	focusResource  = 1
-	focusUsername   = 2
+	focusUsername  = 2
 	focusUserAgent = 3
 	focusStatus    = 4
 	focusSourceIP  = 5
@@ -79,9 +79,9 @@ type Model struct {
 	mPrimary     int // number of primary metric facets
 	mTotal       int // total visible metric facets
 
-	loadedCount  int
-	loadStart    time.Time
-	confirmQuit  bool
+	loadedCount int
+	loadStart   time.Time
+	confirmQuit bool
 
 	// Value range input mode (metrics only)
 	valueInput    bool
