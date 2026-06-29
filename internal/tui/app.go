@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/afcollins/kbx/internal/audit"
+	"github.com/afcollins/kbx/internal/common"
 	"github.com/afcollins/kbx/internal/export"
 	"github.com/afcollins/kbx/internal/metrics"
 	"github.com/afcollins/kbx/internal/mstore"
@@ -33,27 +34,19 @@ const (
 
 // Audit mode focus constants
 const (
-	focusVerb      = 0
-	focusResource  = 1
-	focusUsername  = 2
-	focusUserAgent = 3
-	focusStatus    = 4
-	focusSourceIP  = 5
-
 	primaryFacetCount   = 4
 	secondaryFacetStart = 4
 	totalFacetCount     = 6
 )
 
 type Model struct {
-	state      appState
-	files      []string
-	tempFiles  []string
-	width      int
-	height     int
-	focus      int
-	statusMsg  string
-	exportPath string
+	state     appState
+	files     []string
+	tempFiles []string
+	width     int
+	height    int
+	focus     int
+	statusMsg string
 
 	// Shared panels
 	filePicker  *panel.FilePickerPanel
@@ -79,8 +72,6 @@ type Model struct {
 	mPrimary     int // number of primary metric facets
 	mTotal       int // total visible metric facets
 
-	loadedCount int
-	loadStart   time.Time
 	confirmQuit bool
 
 	// Value range input mode (metrics only)
@@ -150,10 +141,7 @@ func NewModel(files []string) Model {
 func detectMetricsMode(files []string) bool {
 	for _, f := range files {
 		if strings.HasSuffix(f, ".json") || strings.HasSuffix(f, ".json.gz") {
-			if isAuditJSON(f) {
-				return false
-			}
-			return true
+			return !isAuditJSON(f)
 		}
 	}
 	return false
@@ -174,7 +162,7 @@ func isAuditJSON(path string) bool {
 		if err != nil {
 			return false
 		}
-		defer gz.Close()
+		defer common.GzCloseSafe(gz)
 		r = gz
 	}
 
@@ -192,13 +180,16 @@ func isAuditJSON(path string) bool {
 	if tok != json.Delim('[') {
 		// First token wasn't '[', so it's a field key or value.
 		// Re-open to decode the full first object.
-		f.Seek(0, 0)
+		if _, err := f.Seek(0, 0); err != nil {
+			slog.Debug("f.Seek", "error", err)
+		}
 		if strings.HasSuffix(path, ".gz") {
 			gz, err := gzip.NewReader(f)
 			if err != nil {
 				return false
 			}
-			defer gz.Close()
+			defer common.GzCloseSafe(gz)
+
 			dec = json.NewDecoder(gz)
 		} else {
 			dec = json.NewDecoder(f)
@@ -311,6 +302,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.focus = 0
 		m.facets[0].Focused = true
 		m.refreshPanels()
+		m.updateSizes() // TODO seems like a good idea
 		return m, nil
 
 	case metricsParsedMsg:
@@ -592,6 +584,7 @@ func (m Model) handleAuditKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// TODO is this comment even accurate anymore? Facets ID'd by ordinal seems fragile
 // Audit focus: 0..5 = facets, 6 = timeline, 7 = event list
 func (m *Model) focusIsTimeline() bool {
 	return !m.metricsMode && m.focus == totalFacetCount
@@ -622,6 +615,7 @@ func (m *Model) setAuditFocus(idx int) {
 	}
 }
 
+// Similar to metricsFocusable. Dedupe?
 func (m *Model) auditFocusable(idx int) bool {
 	maxIdx := totalFacetCount + 1 // timeline + event list
 	if idx > maxIdx {
@@ -1098,6 +1092,7 @@ func (m *Model) setMetricsFocus(idx int) {
 	}
 }
 
+// Similar to auditFocusable. Dedupe?
 func (m *Model) metricsFocusable(idx int) bool {
 	maxIdx := m.mTotal + 1
 	if idx > maxIdx {
@@ -1257,13 +1252,6 @@ func (m Model) handleFilePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) filteredCount() int {
-	if m.metricsMode {
-		return m.metricStore.FilteredCount()
-	}
-	return m.store.FilteredCount()
-}
-
 func (m *Model) refreshPanels() {
 	if m.metricsMode {
 		for _, fp := range m.metricFacets {
@@ -1415,7 +1403,9 @@ func (m Model) exportFiltered() tea.Cmd {
 
 func (m *Model) cleanup() {
 	for _, tmp := range m.tempFiles {
-		os.Remove(tmp)
+		if err := os.Remove(tmp); err != nil {
+			slog.Debug("Error removing tempfile", "error", err)
+		}
 	}
 }
 

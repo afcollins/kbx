@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/afcollins/kbx/internal/common"
 )
 
 type rawEvent struct {
@@ -54,8 +56,7 @@ func ParseFile(path string, fileIndex int) (*ParseResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer gz.Close()
-
+		defer common.GzCloseSafe(gz)
 		tmp, err := os.CreateTemp("", "kbx-audit-*.log")
 		if err != nil {
 			return nil, err

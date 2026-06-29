@@ -424,7 +424,7 @@ func (sp *ScatterPanel) View(ms *mstore.MetricStore) string {
 	if sp.Focused && sp.ValueSelStart >= 0 {
 		bandStyle := lipgloss.NewStyle().Foreground(styles.ColorAccent)
 		lo := sp.ValueSelStart
-		hi := lo
+		var hi int
 		if sp.ValueSelEnd >= 0 {
 			hi = sp.ValueSelEnd
 		} else {

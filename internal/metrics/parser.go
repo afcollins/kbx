@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/afcollins/kbx/internal/common"
 )
 
 // ParseResult holds events from a single metrics file.
@@ -91,7 +93,7 @@ func decompressToTemp(r io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer gz.Close()
+	defer common.GzCloseSafe(gz)
 
 	tmp, err := os.CreateTemp("", "kube-metrics-*.json")
 	if err != nil {
