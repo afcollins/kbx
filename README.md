@@ -22,5 +22,13 @@ This tool CAN:
 * Open metricsProfiles metrics and podLatencyMeasurements in the same session
 * Open plaintext and gzipped files
 
+### Remote / SSH terminals
+
+If colors or the heatmap look wrong over SSH, export `COLORTERM`:
+```
+export COLORTERM=truecolor
+```
+Your remote shell may not advertise truecolor support even when the local terminal handles it fine.
+
 This tool CANNOT:
 * Open audit and metrics files in the same session, as they are fundamentally different formats and render differently. One at a time for now, please.
