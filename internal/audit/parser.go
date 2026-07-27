@@ -45,7 +45,7 @@ func ParseFile(path string, fileIndex int) (*ParseResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer common.CloseQuiet(f)
 
 	var reader io.Reader
 	readPath := path
@@ -61,7 +61,7 @@ func ParseFile(path string, fileIndex int) (*ParseResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		tmpCleanup = func() { tmp.Close() }
+		tmpCleanup = func() { common.CloseQuiet(tmp) }
 		readPath = tmp.Name()
 
 		// TeeReader: reads from gzip, writes to temp file simultaneously
@@ -164,7 +164,7 @@ func ReadRawJSON(path string, offset int64, length int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer common.CloseQuiet(f)
 
 	buf := make([]byte, length)
 	_, err = f.ReadAt(buf, offset)

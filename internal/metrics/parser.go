@@ -52,7 +52,7 @@ func ParseFile(path string, fileIndex int) (*ParseResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer common.CloseQuiet(f)
 
 	var reader io.Reader
 	readPath := path
@@ -69,7 +69,7 @@ func ParseFile(path string, fileIndex int) (*ParseResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer tf.Close()
+		defer common.CloseQuiet(tf)
 		reader = tf
 	} else {
 		reader = f
@@ -99,10 +99,10 @@ func decompressToTemp(r io.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer tmp.Close()
+	defer common.CloseQuiet(tmp)
 
 	if _, err := io.Copy(tmp, gz); err != nil {
-		os.Remove(tmp.Name())
+		_ = os.Remove(tmp.Name())
 		return "", err
 	}
 	return tmp.Name(), nil

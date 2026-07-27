@@ -164,15 +164,15 @@ func (el *EventListPanel) View(s *store.EventStore) string {
 // FormatEventDetail returns a pretty-printed detail of an event for the modal.
 func FormatEventDetail(e *audit.AuditEvent) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Timestamp:  %s\n", e.Timestamp.Format("2006-01-02 15:04:05.000")))
-	b.WriteString(fmt.Sprintf("Verb:       %s\n", e.Verb))
-	b.WriteString(fmt.Sprintf("Resource:   %s\n", e.Resource))
-	b.WriteString(fmt.Sprintf("API Group:  %s\n", e.APIGroup))
-	b.WriteString(fmt.Sprintf("Version:    %s\n", e.APIVersion))
-	b.WriteString(fmt.Sprintf("Namespace:  %s\n", e.Namespace))
-	b.WriteString(fmt.Sprintf("User:       %s\n", e.Username))
-	b.WriteString(fmt.Sprintf("Source IP:  %s\n", e.SourceIP))
-	b.WriteString(fmt.Sprintf("User Agent: %s\n", e.UserAgent))
-	b.WriteString(fmt.Sprintf("Status:     %d\n", e.StatusCode))
+	fmt.Fprintf(&b, "Timestamp:  %s\n", e.Timestamp.Format("2006-01-02 15:04:05.000"))
+	fmt.Fprintf(&b, "Verb:       %s\n", e.Verb)
+	fmt.Fprintf(&b, "Resource:   %s\n", e.Resource)
+	fmt.Fprintf(&b, "API Group:  %s\n", e.APIGroup)
+	fmt.Fprintf(&b, "Version:    %s\n", e.APIVersion)
+	fmt.Fprintf(&b, "Namespace:  %s\n", e.Namespace)
+	fmt.Fprintf(&b, "User:       %s\n", e.Username)
+	fmt.Fprintf(&b, "Source IP:  %s\n", e.SourceIP)
+	fmt.Fprintf(&b, "User Agent: %s\n", e.UserAgent)
+	fmt.Fprintf(&b, "Status:     %d\n", e.StatusCode)
 	return b.String()
 }

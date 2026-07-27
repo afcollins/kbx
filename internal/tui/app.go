@@ -154,7 +154,7 @@ func isAuditJSON(path string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer common.CloseQuiet(f)
 
 	var r io.Reader = f
 	if strings.HasSuffix(path, ".gz") {

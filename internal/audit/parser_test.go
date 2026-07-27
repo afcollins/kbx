@@ -72,7 +72,7 @@ func TestParseGzipFile(t *testing.T) {
 
 	// Cleanup temp file
 	if result.ReadPath != gzPath {
-		os.Remove(result.ReadPath)
+		_ = os.Remove(result.ReadPath)
 	}
 
 	t.Logf("Parsed %d events from gzip file", len(result.Events))

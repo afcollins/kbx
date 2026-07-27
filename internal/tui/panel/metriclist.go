@@ -156,19 +156,19 @@ func (ml *MetricListPanel) View(s *mstore.MetricStore) string {
 // FormatMetricDetail returns a pretty-printed detail of a metric event.
 func FormatMetricDetail(e *metrics.MetricEvent) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Timestamp:   %s\n", e.Timestamp.Format("2006-01-02 15:04:05.000")))
-	b.WriteString(fmt.Sprintf("Metric:      %s\n", e.MetricName))
-	b.WriteString(fmt.Sprintf("Value:       %g\n", e.Value))
-	b.WriteString(fmt.Sprintf("UUID:        %s\n", e.UUID))
-	b.WriteString(fmt.Sprintf("Job:         %s\n", e.JobName))
+	fmt.Fprintf(&b, "Timestamp:   %s\n", e.Timestamp.Format("2006-01-02 15:04:05.000"))
+	fmt.Fprintf(&b, "Metric:      %s\n", e.MetricName)
+	fmt.Fprintf(&b, "Value:       %g\n", e.Value)
+	fmt.Fprintf(&b, "UUID:        %s\n", e.UUID)
+	fmt.Fprintf(&b, "Job:         %s\n", e.JobName)
 	b.WriteString("\nLabels:\n")
 	for k, v := range e.Labels {
-		b.WriteString(fmt.Sprintf("  %-12s %s\n", k+":", v))
+		fmt.Fprintf(&b, "  %-12s %s\n", k+":", v)
 	}
 	if len(e.Metadata) > 0 {
 		b.WriteString("\nMetadata:\n")
 		for k, v := range e.Metadata {
-			b.WriteString(fmt.Sprintf("  %-20s %s\n", k+":", v))
+			fmt.Fprintf(&b, "  %-20s %s\n", k+":", v)
 		}
 	}
 	return b.String()

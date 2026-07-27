@@ -223,7 +223,7 @@ func (fp *FilePickerPanel) View() string {
 
 	sel := len(fp.Selected)
 	if sel > 0 {
-		b.WriteString(fmt.Sprintf("\n\n%d file(s) selected", sel))
+		fmt.Fprintf(&b, "\n\n%d file(s) selected", sel)
 	}
 
 	panelStyle := styles.FocusedPanelStyle.Width(fp.Width - 2).Height(fp.Height - 2)
