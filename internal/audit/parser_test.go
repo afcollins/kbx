@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseFile(t *testing.T) {
-	result, err := ParseFile("../../sample_events.log", 0)
+	result, err := ParseFile("../../testdata/sample_events.log", 0)
 	if err != nil {
 		t.Fatalf("ParseFile failed: %v", err)
 	}

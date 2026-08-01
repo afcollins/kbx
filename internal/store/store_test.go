@@ -8,7 +8,7 @@ import (
 
 func loadTestStore(t *testing.T) *EventStore {
 	t.Helper()
-	result, err := audit.ParseFile("../../sample_events.log", 0)
+	result, err := audit.ParseFile("../../testdata/sample_events.log", 0)
 	if err != nil {
 		t.Fatalf("ParseFile failed: %v", err)
 	}
