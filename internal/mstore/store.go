@@ -18,6 +18,7 @@ type MetricStore struct {
 	JobSummary map[string]any
 
 	fieldIndexes  map[string]*store.InvertedIndex
+	labelFields   map[string]bool
 	FieldNames    []string // all discovered facet-able field names, sorted
 	PrimaryFields []string
 
@@ -33,6 +34,7 @@ type MetricStore struct {
 func New() *MetricStore {
 	return &MetricStore{
 		fieldIndexes:  make(map[string]*store.InvertedIndex),
+		labelFields:   make(map[string]bool),
 		PrimaryFields: DefaultPrimaryFields,
 		filters:       make(map[string]string),
 	}
@@ -76,6 +78,7 @@ func (s *MetricStore) Load(results []*metrics.ParseResult) {
 		for k, v := range e.Labels {
 			s.addToIndex(k, v, i)
 			fieldSet[k] = true
+			s.labelFields[k] = true
 		}
 	}
 
@@ -275,12 +278,14 @@ func (s *MetricStore) ReadRawJSON(eventIndex int) ([]byte, error) {
 	return nil, nil
 }
 
-// VisibleFields returns fields that have more than 1 unique value in filtered events.
+// VisibleFields returns all discovered metric labels plus non-label fields that have
+// more than one unique value in filtered events. Labels remain useful context even
+// when their value is constant across a metric file.
 func (s *MetricStore) VisibleFields() []string {
 	var visible []string
 	for _, field := range s.FieldNames {
 		counts := s.TopN(field, 2)
-		if len(counts) > 1 {
+		if s.labelFields[field] || len(counts) > 1 {
 			visible = append(visible, field)
 		}
 	}

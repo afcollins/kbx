@@ -1324,10 +1324,6 @@ func (m *Model) updateAuditSizes() {
 }
 
 func (m *Model) updateMetricsSizes() {
-	if m.mTotal == 0 {
-		return
-	}
-
 	// Primary: up to 4 across, then wrap
 	perRow := m.mPrimary
 	if perRow > 4 {
