@@ -1,7 +1,11 @@
 .PHONY: build lint test clean install
+BINARY  := kbx
+BUILD_DATE = $(shell date '+%Y-%m-%d-%H:%M:%S')
+VERSION := $(shell git rev-parse --short HEAD)
+LDFLAGS := -s -w -X main.Version=$(VERSION) -X main.BuildDate=$(BUILD_DATE) -X main.GitCommit=$(VERSION)
 
 build:
-	go build -o kbx .
+	go build -ldflags="$(LDFLAGS)" -o $(BINARY) .
 
 lint:
 	go vet ./...
@@ -15,4 +19,4 @@ test:
 	go test ./...
 
 clean:
-	rm -f kbx
+	rm -f $(BINARY)

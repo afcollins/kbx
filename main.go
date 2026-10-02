@@ -1,33 +1,55 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/afcollins/kbx/internal/tui"
+	"github.com/spf13/cobra"
 )
 
+var Version = "dev"
+var BuildDate = ""
+var GitCommit = ""
+
 func main() {
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [flags] [file1.log file2.json ...]\n\n", os.Args[0])
-		fmt.Fprintf(os.Stderr, "Interactive TUI for exploring Kubernetes audit logs and metrics.\n")
-		fmt.Fprintf(os.Stderr, "Supports .log, .log.gz (audit), .json, .json.gz (metrics).\n")
-		fmt.Fprintf(os.Stderr, "If no files are provided, a file picker will be shown.\n\n")
-		flag.PrintDefaults()
-	}
-
-	flag.Parse()
-	files := flag.Args()
-
-	initLogging()
-
-	if err := tui.Run(files); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	rootCmd := newRootCmd(func(files []string) error {
+		initLogging()
+		return tui.Run(files)
+	})
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+func newRootCmd(run func([]string) error) *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:   "kbx [file1.log file2.json ...]",
+		Short: "Explore Kubernetes audit logs and kube-burner metrics",
+		Long: "Interactive TUI for exploring Kubernetes audit logs and kube-burner metrics.\n" +
+			"Supports .log, .log.gz (audit), .json, and .json.gz (metrics).\n" +
+			"If no files are provided, a file picker is shown.",
+		Args: cobra.ArbitraryArgs,
+		RunE: func(_ *cobra.Command, args []string) error {
+			return run(args)
+		},
+	}
+
+	versionCmd := &cobra.Command{
+		Use:   "version",
+		Short: "Print the build revision",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			fmt.Fprintln(cmd.OutOrStdout(), "Version:", Version)
+			fmt.Fprintln(cmd.OutOrStdout(), "Git Commit:", GitCommit)
+			fmt.Fprintln(cmd.OutOrStdout(), "Build Date:", BuildDate)
+		},
+	}
+	rootCmd.AddCommand(versionCmd)
+
+	return rootCmd
 }
 
 func initLogging() {
