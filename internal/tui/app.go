@@ -1009,7 +1009,7 @@ func (m Model) handleMetricsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "m":
-		if m.focus >= 0 && m.focus < m.mTotal {
+		if (m.focus >= 0 && m.focus < m.mTotal) || m.focus == focusTimeline {
 			m.maximized = !m.maximized
 		} else if m.maximized {
 			m.maximized = false
@@ -1485,15 +1485,22 @@ func (m Model) dashboardView() string {
 }
 
 func (m Model) metricsDashboardView() string {
-	// Maximized facet panel
-	if m.maximized && m.focus >= 0 && m.focus < m.mTotal {
-		fp := m.metricFacets[m.focus]
-		fp.Width = m.width
-		fp.Height = m.height - styles.StatusBarHeight
-		fp.MaxItems = (fp.Height - 3)
-		fp.Update(m.metricStore)
-		help := styles.HelpStyle.Render("[m/Esc] restore  [↑↓] navigate  [Enter/Space] filter  [q] quit")
-		return fp.View() + "\n" + help
+	if m.maximized {
+		if m.focus >= 0 && m.focus < m.mTotal {
+			fp := m.metricFacets[m.focus]
+			fp.Width = m.width
+			fp.Height = m.height - styles.StatusBarHeight
+			fp.MaxItems = fp.Height - 3
+			fp.Update(m.metricStore)
+			help := styles.HelpStyle.Render("[m/Esc] restore  [↑↓] navigate  [Enter/Space] filter  [q] quit")
+			return fp.View() + "\n" + help
+		}
+		if m.focus == m.mTotal {
+			m.scatter.Width = m.width
+			m.scatter.Height = m.height - styles.StatusBarHeight
+			help := styles.HelpStyle.Render("[m/Esc] restore  [↑↓] move cursor  [←→] move time  [v] select band  [q] quit")
+			return m.scatter.View(m.metricStore) + "\n" + help
+		}
 	}
 
 	var sections []string
