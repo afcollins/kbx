@@ -5,3 +5,5 @@
 kube-audit-log-tool
 kbx
 audit-export-*.json
+*.gz
+.DS_Store

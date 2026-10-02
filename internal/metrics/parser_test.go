@@ -1,6 +1,9 @@
 package metrics
 
 import (
+	"compress/gzip"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -41,7 +44,7 @@ func TestParseContainerCPU(t *testing.T) {
 }
 
 func TestParseContainerCPUGzip(t *testing.T) {
-	result, err := ParseFile(testdataDir+"containerCPU.json.gz", 0)
+	result, err := ParseFile(gzipFixture(t, testdataDir+"containerCPU.json"), 0)
 	if err != nil {
 		t.Fatalf("ParseFile gzip: %v", err)
 	}
@@ -57,6 +60,32 @@ func TestParseContainerCPUGzip(t *testing.T) {
 	if e.MetricName != "containerCPU" {
 		t.Errorf("MetricName = %q, want %q", e.MetricName, "containerCPU")
 	}
+}
+
+func gzipFixture(t *testing.T, source string) string {
+	t.Helper()
+
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatalf("ReadFile(%s): %v", source, err)
+	}
+
+	path := filepath.Join(t.TempDir(), "metrics.json.gz")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("Create(%s): %v", path, err)
+	}
+	defer f.Close()
+
+	gz := gzip.NewWriter(f)
+	if _, err := gz.Write(data); err != nil {
+		t.Fatalf("gzip write: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("gzip close: %v", err)
+	}
+
+	return path
 }
 
 func TestParsePodLatency(t *testing.T) {
