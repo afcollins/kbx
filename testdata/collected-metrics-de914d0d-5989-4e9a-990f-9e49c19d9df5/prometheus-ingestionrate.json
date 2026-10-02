@@ -1,0 +1,13 @@
+[
+  {
+    "timestamp": "2026-09-18T19:00:00Z",
+    "labels": {
+      "job": "prometheus-k8s",
+      "namespace": "openshift-monitoring"
+    },
+    "value": 358269.3888888889,
+    "uuid": "de914d0d-5989-4e9a-990f-9e49c19d9df5",
+    "metricName": "prometheus-ingestionrate",
+    "jobName": "kube-burner-ocp-indexing"
+  }
+]
